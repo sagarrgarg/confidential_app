@@ -66,8 +66,8 @@ fixtures = [
     {
         "dt": "DocPerm",
         "filters": [
-            ["parent", "in", ["BOM", "Stock Entry", "Work Order", "Confidential Settings", "Role", "Confidential Role Mapping"]],
-            ["role", "in", ["Confidential Manager", "Confidential User"]]
+            ["role", "in", ["Confidential Manager", "Confidential User"]],
+            ["parent", "in", ["BOM", "Stock Entry", "Work Order", "Confidential Settings", "Confidential Role Mapping", "Role"]]
         ]
     }
 ]
