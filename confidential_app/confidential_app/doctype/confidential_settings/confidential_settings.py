@@ -75,23 +75,14 @@ def get_settings():
 
     try:
         # Fetch necessary fields directly
-        db_settings = frappe.db.get_singles_dict(
-            "Confidential Settings",
-            fields=[
-                "enable_confidential_protection",
-                "protect_bom",
-                "protect_stock_entry",
-                "debug_mode",
-                # Removed permlevel fields
-            ]
-        )
+        db_settings = frappe.db.get_singles_dict("Confidential Settings")
 
         settings = {
             "enable_confidential_protection": db_settings.get("enable_confidential_protection", 1),
             "protect_bom": db_settings.get("protect_bom", 1),
             "protect_stock_entry": db_settings.get("protect_stock_entry", 1),
             "debug_mode": db_settings.get("debug_mode", 0),
-             # Removed permlevel fields
+            # Removed permlevel fields
         }
 
         # Cache the simplified settings
