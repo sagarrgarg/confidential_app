@@ -164,10 +164,18 @@ def update_stock_entries_on_bom_change(doc, method=None):
     
     debug_log(f"Updating linked documents for BOM {doc.name} due to confidentiality changes")
     
-    # Find all Stock Entries linked to this BOM
+    # Update drafts and submitted entries normally
+    update_active_documents(doc, new_roles)
+    
+    # Use direct DB update for cancelled entries
+    update_cancelled_documents_db(doc, new_roles)
+
+def update_active_documents(doc, new_roles):
+    """Update draft and submitted documents using document save approach"""
+    # Find all active Stock Entries linked to this BOM
     stock_entries = frappe.get_all(
         "Stock Entry",
-        filters={"bom_no": doc.name},
+        filters={"bom_no": doc.name, "docstatus": ["in", [0, 1]]},  # Draft and Submitted only
         pluck="name"
     )
     
@@ -189,16 +197,16 @@ def update_stock_entries_on_bom_change(doc, method=None):
                 needs_update = True
                 
             if needs_update:
-                se.flags.ignore_permissions = True  # Allow update even if user doesn't have permission
+                se.flags.ignore_permissions = True
                 se.save()
                 debug_log(f"Updated Stock Entry {se_name} based on BOM {doc.name} change")
         except Exception as e:
             debug_log(f"Error updating Stock Entry {se_name}: {str(e)}")
     
-    # Find all Work Orders linked to this BOM
+    # Find all active Work Orders linked to this BOM
     work_orders = frappe.get_all(
         "Work Order",
-        filters={"bom_no": doc.name},
+        filters={"bom_no": doc.name, "docstatus": ["in", [0, 1]]},  # Draft and Submitted only
         pluck="name"
     )
     
@@ -220,11 +228,84 @@ def update_stock_entries_on_bom_change(doc, method=None):
                 needs_update = True
                 
             if needs_update:
-                wo.flags.ignore_permissions = True  # Allow update even if user doesn't have permission
+                wo.flags.ignore_permissions = True
                 wo.save()
                 debug_log(f"Updated Work Order {wo_name} based on BOM {doc.name} change")
         except Exception as e:
             debug_log(f"Error updating Work Order {wo_name}: {str(e)}")
+
+def update_cancelled_documents_db(doc, new_roles):
+    """Update cancelled documents directly in the database"""
+    # Update cancelled Stock Entries
+    cancelled_stock_entries = frappe.get_all(
+        "Stock Entry",
+        filters={"bom_no": doc.name, "docstatus": 2},  # Cancelled only
+        pluck="name"
+    )
+    
+    if cancelled_stock_entries:
+        debug_log(f"Updating {len(cancelled_stock_entries)} cancelled Stock Entries via DB")
+        
+        # Update is_confidential flag
+        frappe.db.sql("""
+            UPDATE `tabStock Entry` 
+            SET is_confidential = %s
+            WHERE name IN %s
+        """, (doc.is_confidential, tuple(cancelled_stock_entries)))
+        
+        # Delete existing role mappings
+        if cancelled_stock_entries:
+            frappe.db.sql("""
+                DELETE FROM `tabConfidential Role Mapping`
+                WHERE parent IN %s AND parenttype = 'Stock Entry' AND parentfield = 'allowed_roles'
+            """, (tuple(cancelled_stock_entries),))
+            
+            # Insert new role mappings if confidential
+            if doc.is_confidential and new_roles:
+                for se_name in cancelled_stock_entries:
+                    for role in new_roles:
+                        frappe.db.sql("""
+                            INSERT INTO `tabConfidential Role Mapping` 
+                            (name, parent, parenttype, parentfield, role)
+                            VALUES (%s, %s, 'Stock Entry', 'allowed_roles', %s)
+                        """, (frappe.generate_hash(length=10), se_name, role))
+    
+    # Update cancelled Work Orders
+    cancelled_work_orders = frappe.get_all(
+        "Work Order",
+        filters={"bom_no": doc.name, "docstatus": 2},  # Cancelled only
+        pluck="name"
+    )
+    
+    if cancelled_work_orders:
+        debug_log(f"Updating {len(cancelled_work_orders)} cancelled Work Orders via DB")
+        
+        # Update is_confidential flag
+        frappe.db.sql("""
+            UPDATE `tabWork Order` 
+            SET is_confidential = %s
+            WHERE name IN %s
+        """, (doc.is_confidential, tuple(cancelled_work_orders)))
+        
+        # Delete existing role mappings
+        if cancelled_work_orders:
+            frappe.db.sql("""
+                DELETE FROM `tabConfidential Role Mapping`
+                WHERE parent IN %s AND parenttype = 'Work Order' AND parentfield = 'allowed_roles'
+            """, (tuple(cancelled_work_orders),))
+            
+            # Insert new role mappings if confidential
+            if doc.is_confidential and new_roles:
+                for wo_name in cancelled_work_orders:
+                    for role in new_roles:
+                        frappe.db.sql("""
+                            INSERT INTO `tabConfidential Role Mapping` 
+                            (name, parent, parenttype, parentfield, role)
+                            VALUES (%s, %s, 'Work Order', 'allowed_roles', %s)
+                        """, (frappe.generate_hash(length=10), wo_name, role))
+    
+    # Commit the direct DB changes
+    frappe.db.commit()
 
 def validate_work_order_permissions_on_save(doc, method=None):
     """Validate permissions when saving a Work Order"""
