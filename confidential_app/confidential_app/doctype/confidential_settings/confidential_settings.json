@@ -1,0 +1,106 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2023-04-13 00:00:00.000000",
+    "default_view": "List",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+     "enabled_section",
+     "enable_confidential_protection",
+     "debug_mode",
+     "protection_settings_section",
+     "protect_bom",
+     "protect_stock_entry",
+     "role_mapping_section",
+     "default_allowed_roles",
+     "debug_information_section",
+     "debug_logs"
+    ],
+    "fields": [
+     {
+      "fieldname": "enabled_section",
+      "fieldtype": "Section Break",
+      "label": "Enabled"
+     },
+     {
+      "default": "1",
+      "fieldname": "enable_confidential_protection",
+      "fieldtype": "Check",
+      "label": "Enable Confidential Protection"
+     },
+     {
+      "fieldname": "debug_mode",
+      "fieldtype": "Check",
+      "label": "Debug Mode",
+      "description": "Log permission checks and errors to the Debug Logs field below."
+     },
+     {
+      "fieldname": "protection_settings_section",
+      "fieldtype": "Section Break",
+      "label": "Protection Settings"
+     },
+     {
+      "default": "1",
+      "fieldname": "protect_bom",
+      "fieldtype": "Check",
+      "label": "Protect BOM"
+     },
+     {
+      "default": "1",
+      "fieldname": "protect_stock_entry",
+      "fieldtype": "Check",
+      "label": "Protect Stock Entry (Based on BOM)"
+     },
+     {
+      "fieldname": "role_mapping_section",
+      "fieldtype": "Section Break",
+      "label": "Defaults (Optional)"
+     },
+     {
+      "fieldname": "default_allowed_roles",
+      "fieldtype": "Table MultiSelect",
+      "label": "Default Allowed Roles",
+      "options": "Confidential Role Mapping",
+      "description": "Future Use: Roles to be added by default when a document is marked confidential."
+     },
+     {
+      "fieldname": "debug_information_section",
+      "fieldtype": "Section Break",
+      "label": "Debug Information"
+     },
+     {
+      "fieldname": "debug_logs",
+      "fieldtype": "Code",
+      "label": "Debug Logs",
+      "options": "Python",
+      "read_only": 1
+     }
+    ],
+    "icon": "fa fa-shield",
+    "issingle": 1,
+    "links": [],
+    "modified": "2023-04-13 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Confidential App",
+    "name": "Confidential Settings",
+    "owner": "Administrator",
+    "permissions": [
+     {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+     }
+    ],
+    "quick_entry": 1,
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+}
