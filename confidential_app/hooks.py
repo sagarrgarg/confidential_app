@@ -102,7 +102,7 @@ fixtures = [
 # ------------
 
 # before_install = "confidential_app.install.before_install"
-after_install = "confidential_app.setup.after_install.after_install"
+# after_install = "confidential_app.setup.after_install.after_install"
 
 # Uninstallation
 # ------------
