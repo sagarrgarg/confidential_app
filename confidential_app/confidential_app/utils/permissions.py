@@ -52,11 +52,17 @@ def has_doctype_permission(doctype, doc, user=None, permission_type=None):
         debug_log(f"  ALLOW: Admin access for {user}")
         return True
     
-    # If we can't identify the document, deny access
-    doc_name = doc.name if hasattr(doc, 'name') else (doc if isinstance(doc, str) else None)
+    # If we can't identify the document, allow standard permissions (likely a new document)
+    doc_name = None
+    if hasattr(doc, 'name') and doc.name:
+        doc_name = doc.name
+    elif isinstance(doc, str) and doc:
+        doc_name = doc
+
+    # If document name is still not known (likely a new doc), allow creation
     if not doc_name:
-        debug_log(f"  DENY: Cannot identify {doctype} document")
-        return False
+        debug_log(f"  ALLOW: New {doctype} document creation - skipping confidential check")
+        return None
     
     # Check if document is confidential
     try:
@@ -116,6 +122,7 @@ def has_doctype_permission(doctype, doc, user=None, permission_type=None):
 # Permission check function for BOM
 def has_bom_permission(doc, user=None, permission_type=None):
     """Check if user has permission to access BOM"""
+    
     return has_doctype_permission("BOM", doc, user, permission_type)
 
 # Permission check function for Stock Entry
