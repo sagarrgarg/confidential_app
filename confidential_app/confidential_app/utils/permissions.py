@@ -39,6 +39,9 @@ def has_doctype_permission(doctype, doc, user=None, permission_type=None):
     # First check if confidential protection is enabled
     if not is_enabled():
         return None
+    
+    if permission_type == "create" and (isinstance(doc, str) or doc.is_new()):
+        return None  # Return None to use standard permission system for creation
         
     user = user or frappe.session.user
     debug_log(f"{doctype} PERMISSION CHECK: user={user}, doc={doc.name if hasattr(doc, 'name') else doc}")
