@@ -304,8 +304,11 @@ def has_stock_entry_submit_permission(doc, user=None, permission_type=None):
                                 "Stock Entry Permission Error")
                 return False
         
+        # Check if the is_confidential field exists, if not default to False
+        is_confidential = getattr(doc, 'is_confidential', 0)
+        
         # If it's not confidential, standard permissions apply
-        if not doc.is_confidential:
+        if not is_confidential:
             debug_log(f"  STANDARD: Stock Entry {doc.name} not confidential")
             return None
         
