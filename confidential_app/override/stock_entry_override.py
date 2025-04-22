@@ -4,6 +4,7 @@ from erpnext.stock.doctype.stock_entry.stock_entry import StockEntry
 from confidential_app.confidential_app.utils.permissions import debug_log, has_bom_permission
 
 class StockEntryOverride(StockEntry):
+    @frappe.whitelist()
     def get_items(self):
         # Check if we should skip BOM data processing due to permission issues
         if hasattr(self, 'flags') and getattr(self.flags, 'ignore_bom_data', False):
