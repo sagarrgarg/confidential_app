@@ -158,9 +158,9 @@ has_permission = {
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-#	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Stock Entry": "confidential_app.override.stock_entry_override.StockEntryOverride"
+}
 
 # Document Events
 # ---------------

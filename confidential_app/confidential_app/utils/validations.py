@@ -115,6 +115,8 @@ def set_stock_entry_confidentiality(doc, method=None):
                 is_confidential = frappe.db.get_value("BOM", doc.bom_no, "is_confidential")
                 if is_confidential:
                     debug_log(f"BOM {doc.bom_no} is confidential but user lacks permission")
+                    # Set a flag to prevent further processing
+                    doc.flags.ignore_bom_data = True
                     # At this point, we know user can't see BOM but tries to create Stock Entry
                     # We'll prevent this by throwing an error
                     frappe.throw(_("You don't have permission to create Stock Entries for this confidential BOM."))
