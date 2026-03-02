@@ -13,6 +13,14 @@
      "protection_settings_section",
      "protect_bom",
      "protect_stock_entry",
+     "column_break_prot",
+     "protect_work_order",
+     "restrict_print",
+     "restrict_export",
+     "audit_section",
+     "enable_audit_trail",
+     "column_break_audit",
+     "enable_access_notifications",
      "role_mapping_section",
      "default_allowed_roles",
      "debug_information_section",
@@ -54,6 +62,53 @@
       "label": "Protect Stock Entry (Based on BOM)"
      },
      {
+      "fieldname": "column_break_prot",
+      "fieldtype": "Column Break"
+     },
+     {
+      "default": "1",
+      "fieldname": "protect_work_order",
+      "fieldtype": "Check",
+      "label": "Protect Work Order (Based on BOM)"
+     },
+     {
+      "default": "1",
+      "fieldname": "restrict_print",
+      "fieldtype": "Check",
+      "label": "Restrict Printing",
+      "description": "Prevent unauthorized users from printing confidential documents"
+     },
+     {
+      "default": "1",
+      "fieldname": "restrict_export",
+      "fieldtype": "Check",
+      "label": "Restrict Export",
+      "description": "Prevent unauthorized users from exporting confidential documents"
+     },
+     {
+      "fieldname": "audit_section",
+      "fieldtype": "Section Break",
+      "label": "Audit & Notifications"
+     },
+     {
+      "default": "1",
+      "fieldname": "enable_audit_trail",
+      "fieldtype": "Check",
+      "label": "Enable Audit Trail",
+      "description": "Log all access to confidential documents in Confidential Access Log"
+     },
+     {
+      "fieldname": "column_break_audit",
+      "fieldtype": "Column Break"
+     },
+     {
+      "default": "1",
+      "fieldname": "enable_access_notifications",
+      "fieldtype": "Check",
+      "label": "Enable Access Notifications",
+      "description": "Send notifications when access is denied or confidentiality changes"
+     },
+     {
       "fieldname": "role_mapping_section",
       "fieldtype": "Section Break",
       "label": "Defaults (Optional)"
@@ -63,12 +118,13 @@
       "fieldtype": "Table MultiSelect",
       "label": "Default Allowed Roles",
       "options": "Confidential Role Mapping",
-      "description": "Future Use: Roles to be added by default when a document is marked confidential."
+      "description": "Roles to be added by default when a document is marked confidential."
      },
      {
       "fieldname": "debug_information_section",
       "fieldtype": "Section Break",
-      "label": "Debug Information"
+      "label": "Debug Information",
+      "collapsible": 1
      },
      {
       "fieldname": "debug_logs",
@@ -81,7 +137,7 @@
     "icon": "fa fa-shield",
     "issingle": 1,
     "links": [],
-    "modified": "2023-04-13 00:00:00.000000",
+    "modified": "2024-01-01 00:00:00.000000",
     "modified_by": "Administrator",
     "module": "Confidential App",
     "name": "Confidential Settings",
@@ -96,6 +152,11 @@
       "role": "System Manager",
       "share": 1,
       "write": 1
+     },
+     {
+      "read": 1,
+      "write": 1,
+      "role": "Confidential Manager"
      }
     ],
     "quick_entry": 1,

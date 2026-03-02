@@ -24,6 +24,15 @@ def create_required_custom_fields():
                 "depends_on": "eval:doc.is_confidential==1",
                 "mandatory_depends_on": "eval:doc.is_confidential==1",
                 "description": "Only users with these roles can access this confidential BOM"
+            },
+            {
+                "fieldname": "allowed_users",
+                "label": "Allowed Users",
+                "fieldtype": "Table",
+                "options": "Confidential User Mapping",
+                "insert_after": "allowed_roles",
+                "depends_on": "eval:doc.is_confidential==1",
+                "description": "Individual users granted access to this confidential BOM (supports time-bound access)"
             }
         ],
         "Stock Entry": [
@@ -44,6 +53,16 @@ def create_required_custom_fields():
                 "depends_on": "eval:doc.is_confidential==1",
                 "read_only": 1,
                 "description": "Only users with these roles can access this confidential Stock Entry"
+            },
+            {
+                "fieldname": "allowed_users",
+                "label": "Allowed Users",
+                "fieldtype": "Table",
+                "options": "Confidential User Mapping",
+                "insert_after": "allowed_roles",
+                "depends_on": "eval:doc.is_confidential==1",
+                "read_only": 1,
+                "description": "Individual users granted access to this confidential Stock Entry"
             }
         ],
         "Work Order": [
@@ -64,6 +83,16 @@ def create_required_custom_fields():
                 "depends_on": "eval:doc.is_confidential==1",
                 "read_only": 1,
                 "description": "Only users with these roles can access this confidential Work Order"
+            },
+            {
+                "fieldname": "allowed_users",
+                "label": "Allowed Users",
+                "fieldtype": "Table",
+                "options": "Confidential User Mapping",
+                "insert_after": "allowed_roles",
+                "depends_on": "eval:doc.is_confidential==1",
+                "read_only": 1,
+                "description": "Individual users granted access to this confidential Work Order"
             }
         ]
     }

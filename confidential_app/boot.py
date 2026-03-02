@@ -1,14 +1,19 @@
 """
-This module contains functions that are executed during application boot
+Boot session module for Confidential App.
+Adds confidential-related data to the boot info sent to the client.
 """
 
 import frappe
-import json
 
-__version__ = '0.0.1'
+__version__ = "0.0.1"
 
-# Apply our module patches when app loads
+
 def boot_session(bootinfo):
-    """Apply our patches when Frappe boots up."""
-    from confidential_app.confidential_app.override.bom_override import apply_patches
-    apply_patches() 
+	"""Add confidential app info to boot data."""
+	if frappe.session.user == "Guest":
+		return
+
+	bootinfo.confidential_app = {
+		"has_confidential_manager": "Confidential Manager" in frappe.get_roles(),
+		"has_confidential_user": "Confidential User" in frappe.get_roles(),
+	}

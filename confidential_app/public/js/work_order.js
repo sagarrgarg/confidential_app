@@ -1,38 +1,50 @@
-frappe.ui.form.on('Work Order', {
-    refresh: function(frm) {
-        // Show a visual indicator if Work Order is confidential
-        if (frm.doc.is_confidential) {
-            frm.page.set_indicator(__("Confidential"), "red");
-            
-            // Add a message to highlight confidential status
-            frm.set_intro(
-                __("This is a confidential Work Order with restricted access. Only users with specific roles can view or edit it."),
-                "red"
-            );
-        }
-    },
-    
-    bom_no: function(frm) {
-        // When BOM is selected, check if it's confidential and update accordingly
-        if (frm.doc.bom_no) {
-            frappe.call({
-                method: 'frappe.client.get',
-                args: {
-                    doctype: 'BOM',
-                    name: frm.doc.bom_no,
-                    fields: ['is_confidential', 'allowed_roles']
-                },
-                callback: function(r) {
-                    if (r.message) {
-                        let bom = r.message;
-                        if (bom.is_confidential) {
-                            frm.set_value('is_confidential', 1);
-                            frm.set_value('allowed_roles', bom.allowed_roles);
-                            frappe.show_alert(__('This Work Order has been marked as confidential based on the selected BOM.'));
-                        }
-                    }
-                }
-            });
-        }
+frappe.ui.form.on("Work Order", {
+  refresh: function (frm) {
+    if (frm.doc.is_confidential) {
+      frm.page.set_indicator(__("Confidential"), "red");
+      frm.set_intro(
+        __(
+          "This is a confidential Work Order with restricted access. Only users with specific roles or explicit user access can view or edit it."
+        ),
+        "red"
+      );
+
+      if (!confidential_app.checkPrintPermission(frm)) {
+        frm.disable_print();
+      }
     }
-}); 
+
+    if (
+      frm.doc.is_confidential &&
+      !frappe.user_roles.includes("System Manager") &&
+      !frappe.user_roles.includes("Confidential Manager")
+    ) {
+      frm.add_custom_button(__("Request Access"), function () {
+        confidential_app.requestAccess("Work Order", frm.doc.name);
+      });
+    }
+  },
+
+  bom_no: function (frm) {
+    if (frm.doc.bom_no) {
+      frappe.call({
+        method: "frappe.client.get_value",
+        args: {
+          doctype: "BOM",
+          filters: { name: frm.doc.bom_no },
+          fieldname: "is_confidential",
+        },
+        callback: function (r) {
+          if (r.message && r.message.is_confidential) {
+            frappe.show_alert({
+              message: __(
+                "This Work Order will be marked as confidential based on the selected BOM."
+              ),
+              indicator: "orange",
+            });
+          }
+        },
+      });
+    }
+  },
+});
