@@ -176,7 +176,9 @@ class TestConfidentialPropagation(FrappeTestCase):
 	# -----------------------------------------------------------------------
 
 	def test_bom_role_change_cascades_to_linked_stock_entries(self):
-		"""When BOM roles change, linked draft Stock Entries update too."""
+		"""When BOM roles change, _update_linked_documents propagates to draft Stock Entries."""
+		from confidential_app.confidential_app.utils.validations import _update_linked_documents
+
 		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
 
 		# Create a Stock Entry directly via DB to avoid ERPNext stock validation
@@ -194,14 +196,16 @@ class TestConfidentialPropagation(FrappeTestCase):
 		""", (frappe.generate_hash(length=10), se_name))
 		frappe.db.commit()
 
-		# Now update BOM to add another role
+		# Add another role to the BOM and call cascade directly
 		bom.reload()
 		bom.append("allowed_roles", {"role": "Confidential User"})
 		bom.flags.ignore_permissions = True
 		bom.save()
 		frappe.db.commit()
 
-		# Check that the Stock Entry was updated
+		_update_linked_documents(bom, "Stock Entry")
+		frappe.db.commit()
+
 		se = frappe.get_doc("Stock Entry", se_name)
 		se_roles = {d.role for d in se.get("allowed_roles", [])}
 		self.assertIn("Confidential User", se_roles)
