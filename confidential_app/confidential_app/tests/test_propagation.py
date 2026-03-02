@@ -11,6 +11,7 @@ class TestConfidentialPropagation(FrappeTestCase):
 		super().setUpClass()
 		cls._ensure_roles()
 		cls._create_test_items()
+		cls._ensure_warehouses()
 		cls._enable_protection()
 
 	@classmethod
@@ -34,6 +35,32 @@ class TestConfidentialPropagation(FrappeTestCase):
 					"item_group": "Products",
 					"stock_uom": "Nos",
 				}).insert(ignore_permissions=True)
+
+	@classmethod
+	def _ensure_warehouses(cls):
+		company = frappe.defaults.get_defaults().get("company")
+		cls.company = company
+		cls.source_warehouse = frappe.db.get_value(
+			"Warehouse", {"company": company, "is_group": 0}, "name"
+		)
+		if not cls.source_warehouse:
+			cls.source_warehouse = frappe.get_doc({
+				"doctype": "Warehouse",
+				"warehouse_name": "Prop Test Source",
+				"company": company,
+			}).insert(ignore_permissions=True).name
+
+		cls.target_warehouse = frappe.db.get_value(
+			"Warehouse",
+			{"company": company, "is_group": 0, "name": ("!=", cls.source_warehouse)},
+			"name",
+		)
+		if not cls.target_warehouse:
+			cls.target_warehouse = frappe.get_doc({
+				"doctype": "Warehouse",
+				"warehouse_name": "Prop Test Target",
+				"company": company,
+			}).insert(ignore_permissions=True).name
 
 	@classmethod
 	def _enable_protection(cls):
@@ -65,28 +92,30 @@ class TestConfidentialPropagation(FrappeTestCase):
 		frappe.db.commit()
 		return bom
 
+	def _create_stock_entry(self, bom_name):
+		se = frappe.get_doc({
+			"doctype": "Stock Entry",
+			"purpose": "Material Issue",
+			"bom_no": bom_name,
+			"company": self.company,
+			"items": [{
+				"item_code": "PROP_ITEM_B",
+				"qty": 1,
+				"uom": "Nos",
+				"s_warehouse": self.source_warehouse,
+			}],
+		})
+		se.insert(ignore_permissions=True)
+		frappe.db.commit()
+		return se
+
 	# -----------------------------------------------------------------------
 	# Stock Entry propagation
 	# -----------------------------------------------------------------------
 
 	def test_stock_entry_inherits_confidentiality_from_bom(self):
 		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
-
-		se = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"purpose": "Manufacture",
-			"bom_no": bom.name,
-			"fg_completed_qty": 1,
-			"items": [{
-				"item_code": "PROP_ITEM_B",
-				"qty": 1,
-				"uom": "Nos",
-				"s_warehouse": "",
-				"t_warehouse": "",
-			}],
-		})
-		se.insert(ignore_permissions=True)
-		frappe.db.commit()
+		se = self._create_stock_entry(bom.name)
 
 		self.assertEqual(se.is_confidential, 1)
 		se_roles = {d.role for d in se.get("allowed_roles", [])}
@@ -104,42 +133,14 @@ class TestConfidentialPropagation(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 
 		bom = self._create_bom(confidential=True, users=[user_email])
-
-		se = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"purpose": "Manufacture",
-			"bom_no": bom.name,
-			"fg_completed_qty": 1,
-			"items": [{
-				"item_code": "PROP_ITEM_B",
-				"qty": 1,
-				"uom": "Nos",
-				"s_warehouse": "",
-				"t_warehouse": "",
-			}],
-		})
-		se.insert(ignore_permissions=True)
-		frappe.db.commit()
+		se = self._create_stock_entry(bom.name)
 
 		se_users = {d.user for d in se.get("allowed_users", [])}
 		self.assertIn(user_email, se_users)
 
 	def test_non_confidential_bom_no_propagation(self):
 		bom = self._create_bom(confidential=False)
-
-		se = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"purpose": "Manufacture",
-			"bom_no": bom.name,
-			"fg_completed_qty": 1,
-			"items": [{
-				"item_code": "PROP_ITEM_B",
-				"qty": 1,
-				"uom": "Nos",
-			}],
-		})
-		se.insert(ignore_permissions=True)
-		frappe.db.commit()
+		se = self._create_stock_entry(bom.name)
 
 		self.assertEqual(se.is_confidential, 0)
 
@@ -155,7 +156,9 @@ class TestConfidentialPropagation(FrappeTestCase):
 			"production_item": "PROP_ITEM_A",
 			"bom_no": bom.name,
 			"qty": 1,
-			"company": frappe.defaults.get_defaults().get("company"),
+			"company": self.company,
+			"wip_warehouse": self.source_warehouse,
+			"fg_warehouse": self.target_warehouse,
 		})
 		wo.insert(ignore_permissions=True)
 		frappe.db.commit()
@@ -166,27 +169,12 @@ class TestConfidentialPropagation(FrappeTestCase):
 		self.assertIn("Confidential User", wo_roles)
 
 	# -----------------------------------------------------------------------
-	# BOM change cascading
+	# BOM change cascading to Stock Entries
 	# -----------------------------------------------------------------------
 
 	def test_bom_role_change_cascades_to_stock_entries(self):
 		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
-		bom.submit()
-		frappe.db.commit()
-
-		se = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"purpose": "Manufacture",
-			"bom_no": bom.name,
-			"fg_completed_qty": 1,
-			"items": [{
-				"item_code": "PROP_ITEM_B",
-				"qty": 1,
-				"uom": "Nos",
-			}],
-		})
-		se.insert(ignore_permissions=True)
-		frappe.db.commit()
+		se = self._create_stock_entry(bom.name)
 
 		bom.reload()
 		bom.append("allowed_roles", {"role": "Confidential User"})
