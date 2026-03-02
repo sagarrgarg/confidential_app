@@ -42,7 +42,7 @@ def notify_access_denied(user, doctype, doc_name):
 		_create_notification_log(manager, subject, message, doctype, doc_name)
 
 
-def notify_access_request_submitted(request_doc):
+def notify_access_request_submitted(request_doc, method=None):
 	"""Notify Confidential Managers about a new access request."""
 	managers = _get_confidential_managers()
 	subject = _("New access request from {0} for {1} {2}").format(
