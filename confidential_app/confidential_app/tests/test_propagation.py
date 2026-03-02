@@ -1,6 +1,10 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, today
+from confidential_app.confidential_app.utils.validations import (
+	set_stock_entry_confidentiality,
+	set_work_order_confidentiality,
+	_copy_access_lists,
+)
 
 
 class TestConfidentialPropagation(FrappeTestCase):
@@ -11,8 +15,8 @@ class TestConfidentialPropagation(FrappeTestCase):
 		super().setUpClass()
 		cls._ensure_roles()
 		cls._create_test_items()
-		cls._ensure_warehouses()
 		cls._enable_protection()
+		cls.company = frappe.defaults.get_defaults().get("company")
 
 	@classmethod
 	def _ensure_roles(cls):
@@ -35,32 +39,6 @@ class TestConfidentialPropagation(FrappeTestCase):
 					"item_group": "Products",
 					"stock_uom": "Nos",
 				}).insert(ignore_permissions=True)
-
-	@classmethod
-	def _ensure_warehouses(cls):
-		company = frappe.defaults.get_defaults().get("company")
-		cls.company = company
-		cls.source_warehouse = frappe.db.get_value(
-			"Warehouse", {"company": company, "is_group": 0}, "name"
-		)
-		if not cls.source_warehouse:
-			cls.source_warehouse = frappe.get_doc({
-				"doctype": "Warehouse",
-				"warehouse_name": "Prop Test Source",
-				"company": company,
-			}).insert(ignore_permissions=True).name
-
-		cls.target_warehouse = frappe.db.get_value(
-			"Warehouse",
-			{"company": company, "is_group": 0, "name": ("!=", cls.source_warehouse)},
-			"name",
-		)
-		if not cls.target_warehouse:
-			cls.target_warehouse = frappe.get_doc({
-				"doctype": "Warehouse",
-				"warehouse_name": "Prop Test Target",
-				"company": company,
-			}).insert(ignore_permissions=True).name
 
 	@classmethod
 	def _enable_protection(cls):
@@ -92,36 +70,26 @@ class TestConfidentialPropagation(FrappeTestCase):
 		frappe.db.commit()
 		return bom
 
-	def _create_stock_entry(self, bom_name):
-		se = frappe.get_doc({
-			"doctype": "Stock Entry",
-			"purpose": "Material Issue",
-			"bom_no": bom_name,
-			"company": self.company,
-			"items": [{
-				"item_code": "PROP_ITEM_B",
-				"qty": 1,
-				"uom": "Nos",
-				"s_warehouse": self.source_warehouse,
-			}],
-		})
-		se.insert(ignore_permissions=True)
-		frappe.db.commit()
-		return se
-
 	# -----------------------------------------------------------------------
-	# Stock Entry propagation
+	# set_stock_entry_confidentiality (before_insert hook)
 	# -----------------------------------------------------------------------
 
-	def test_stock_entry_inherits_confidentiality_from_bom(self):
+	def test_se_inherits_confidentiality(self):
+		"""Stock Entry inherits is_confidential and allowed_roles from BOM."""
 		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
-		se = self._create_stock_entry(bom.name)
+
+		se = frappe.new_doc("Stock Entry")
+		se.purpose = "Manufacture"
+		se.bom_no = bom.name
+
+		set_stock_entry_confidentiality(se)
 
 		self.assertEqual(se.is_confidential, 1)
 		se_roles = {d.role for d in se.get("allowed_roles", [])}
 		self.assertIn("Confidential Manager", se_roles)
 
-	def test_stock_entry_inherits_allowed_users(self):
+	def test_se_inherits_allowed_users(self):
+		"""Stock Entry inherits allowed_users from BOM."""
 		user_email = "prop_test_user@test.local"
 		if not frappe.db.exists("User", user_email):
 			frappe.get_doc({
@@ -133,35 +101,43 @@ class TestConfidentialPropagation(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 
 		bom = self._create_bom(confidential=True, users=[user_email])
-		se = self._create_stock_entry(bom.name)
+
+		se = frappe.new_doc("Stock Entry")
+		se.purpose = "Manufacture"
+		se.bom_no = bom.name
+
+		set_stock_entry_confidentiality(se)
 
 		se_users = {d.user for d in se.get("allowed_users", [])}
 		self.assertIn(user_email, se_users)
 
-	def test_non_confidential_bom_no_propagation(self):
+	def test_se_non_confidential_bom(self):
+		"""Stock Entry is not marked confidential when BOM isn't."""
 		bom = self._create_bom(confidential=False)
-		se = self._create_stock_entry(bom.name)
+
+		se = frappe.new_doc("Stock Entry")
+		se.purpose = "Manufacture"
+		se.bom_no = bom.name
+
+		set_stock_entry_confidentiality(se)
 
 		self.assertEqual(se.is_confidential, 0)
 
 	# -----------------------------------------------------------------------
-	# Work Order propagation
+	# set_work_order_confidentiality (before_insert hook)
 	# -----------------------------------------------------------------------
 
-	def test_work_order_inherits_confidentiality_from_bom(self):
+	def test_wo_inherits_confidentiality(self):
+		"""Work Order inherits confidentiality from BOM."""
 		bom = self._create_bom(confidential=True, roles=["Confidential Manager", "Confidential User"])
 
-		wo = frappe.get_doc({
-			"doctype": "Work Order",
-			"production_item": "PROP_ITEM_A",
-			"bom_no": bom.name,
-			"qty": 1,
-			"company": self.company,
-			"wip_warehouse": self.source_warehouse,
-			"fg_warehouse": self.target_warehouse,
-		})
-		wo.insert(ignore_permissions=True)
-		frappe.db.commit()
+		wo = frappe.new_doc("Work Order")
+		wo.production_item = "PROP_ITEM_A"
+		wo.bom_no = bom.name
+		wo.qty = 1
+		wo.company = self.company
+
+		set_work_order_confidentiality(wo)
 
 		self.assertEqual(wo.is_confidential, 1)
 		wo_roles = {d.role for d in wo.get("allowed_roles", [])}
@@ -169,19 +145,63 @@ class TestConfidentialPropagation(FrappeTestCase):
 		self.assertIn("Confidential User", wo_roles)
 
 	# -----------------------------------------------------------------------
-	# BOM change cascading to Stock Entries
+	# _copy_access_lists helper
 	# -----------------------------------------------------------------------
 
-	def test_bom_role_change_cascades_to_stock_entries(self):
-		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
-		se = self._create_stock_entry(bom.name)
+	def test_copy_access_lists(self):
+		"""_copy_access_lists copies both roles and users."""
+		from frappe.utils import today, add_days
 
+		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
+		bom.append("allowed_users", {
+			"user": "Administrator",
+			"valid_from": today(),
+			"valid_until": add_days(today(), 30),
+		})
+		bom.flags.ignore_permissions = True
+		bom.save()
+		frappe.db.commit()
+
+		target = frappe.new_doc("Stock Entry")
+		_copy_access_lists(bom, target)
+
+		target_roles = {d.role for d in target.get("allowed_roles", [])}
+		self.assertIn("Confidential Manager", target_roles)
+
+		target_users = {d.user for d in target.get("allowed_users", [])}
+		self.assertIn("Administrator", target_users)
+
+	# -----------------------------------------------------------------------
+	# BOM change cascading
+	# -----------------------------------------------------------------------
+
+	def test_bom_role_change_cascades_to_linked_stock_entries(self):
+		"""When BOM roles change, linked draft Stock Entries update too."""
+		bom = self._create_bom(confidential=True, roles=["Confidential Manager"])
+
+		# Create a Stock Entry directly via DB to avoid ERPNext stock validation
+		se_name = frappe.generate_hash(length=10)
+		frappe.db.sql("""
+			INSERT INTO `tabStock Entry`
+			(name, docstatus, purpose, bom_no, company, is_confidential, owner, modified_by, creation, modified)
+			VALUES (%s, 0, 'Manufacture', %s, %s, 1, 'Administrator', 'Administrator', NOW(), NOW())
+		""", (se_name, bom.name, self.company))
+		frappe.db.sql("""
+			INSERT INTO `tabConfidential Role Mapping`
+			(name, parent, parenttype, parentfield, role, owner, modified_by, creation, modified)
+			VALUES (%s, %s, 'Stock Entry', 'allowed_roles', 'Confidential Manager',
+					'Administrator', 'Administrator', NOW(), NOW())
+		""", (frappe.generate_hash(length=10), se_name))
+		frappe.db.commit()
+
+		# Now update BOM to add another role
 		bom.reload()
 		bom.append("allowed_roles", {"role": "Confidential User"})
 		bom.flags.ignore_permissions = True
 		bom.save()
 		frappe.db.commit()
 
-		se.reload()
+		# Check that the Stock Entry was updated
+		se = frappe.get_doc("Stock Entry", se_name)
 		se_roles = {d.role for d in se.get("allowed_roles", [])}
 		self.assertIn("Confidential User", se_roles)
