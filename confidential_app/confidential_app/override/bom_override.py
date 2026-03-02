@@ -1,35 +1,37 @@
 import frappe
 from frappe import _
-import functools
 from erpnext.manufacturing.doctype.bom.bom import get_bom_items as original_get_bom_items
-from confidential_app.confidential_app.utils.permissions import debug_log, has_bom_permission
+from confidential_app.confidential_app.utils.permissions import (
+	_is_admin,
+	_is_protection_enabled,
+	_user_has_doc_access,
+	debug_log,
+)
 
-# Store the original function for later use
-original_get_bom_items_func = original_get_bom_items
 
-# Define our patched function with permission check
 @frappe.whitelist()
 def get_bom_items_with_permission_check(bom, company, qty=1, fetch_exploded=1):
-    """
-    Override of erpnext.manufacturing.doctype.bom.bom.get_bom_items that adds permission checks.
-    """
-    debug_log(f"BOM ITEMS REQUEST: bom={bom}, user={frappe.session.user}")
-    
-    # Use our centralized permission check function
-    if not has_bom_permission(bom):
-        frappe.throw(_("You don't have permission to access this confidential BOM."), frappe.PermissionError)
-    
-    # If we got here, the user has permission to access the BOM
-    # Call the original function
-    debug_log(f"Permission check passed, calling original get_bom_items for BOM {bom}")
-    return original_get_bom_items_func(bom=bom, company=company, qty=float(qty), fetch_exploded=int(fetch_exploded))
+	"""
+	Override of erpnext.manufacturing.doctype.bom.bom.get_bom_items
+	that adds confidential permission checks before returning items.
+	"""
+	if _is_protection_enabled():
+		is_confidential = frappe.db.get_value("BOM", bom, "is_confidential")
+		if is_confidential:
+			user = frappe.session.user
+			if not _is_admin(user) and not _user_has_doc_access("BOM", bom, user):
+				debug_log(f"DENY: {user} tried to get items for confidential BOM {bom}")
+				frappe.throw(
+					_("You don't have permission to access this confidential BOM."),
+					frappe.PermissionError,
+				)
+
+	return original_get_bom_items(
+		bom=bom, company=company, qty=float(qty), fetch_exploded=int(fetch_exploded)
+	)
+
 
 def apply_patches(app_name=None):
-    """Apply our patches to the erpnext modules."""
-    debug_log("Applying BOM override patches")
-    
-    # Replace the original get_bom_items function with our patched version
-    import erpnext.manufacturing.doctype.bom.bom
-    erpnext.manufacturing.doctype.bom.bom.get_bom_items = get_bom_items_with_permission_check
-    
-    debug_log("BOM patches applied successfully") 
+	"""Legacy patch applicator - kept for backward compatibility but no longer needed.
+	The override is now handled via override_whitelisted_methods in hooks.py."""
+	pass

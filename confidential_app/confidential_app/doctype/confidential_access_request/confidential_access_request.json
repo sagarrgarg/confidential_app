@@ -1,0 +1,179 @@
+{
+    "actions": [],
+    "autoname": "CAR-.#####",
+    "creation": "2024-01-01 00:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "user",
+        "column_break_1",
+        "status",
+        "section_break_ref",
+        "reference_doctype",
+        "column_break_2",
+        "reference_name",
+        "section_break_reason",
+        "reason",
+        "section_break_access",
+        "access_type",
+        "column_break_3",
+        "valid_until",
+        "section_break_approval",
+        "approved_by",
+        "column_break_4",
+        "responded_on",
+        "section_break_response",
+        "response_note"
+    ],
+    "fields": [
+        {
+            "fieldname": "user",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Requesting User",
+            "options": "User",
+            "reqd": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Pending\nApproved\nRejected",
+            "default": "Pending",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_ref",
+            "fieldtype": "Section Break",
+            "label": "Document Reference"
+        },
+        {
+            "fieldname": "reference_doctype",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Document Type",
+            "options": "DocType",
+            "reqd": 1
+        },
+        {
+            "fieldname": "column_break_2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "reference_name",
+            "fieldtype": "Dynamic Link",
+            "in_list_view": 1,
+            "label": "Document Name",
+            "options": "reference_doctype",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_reason",
+            "fieldtype": "Section Break",
+            "label": "Request Details"
+        },
+        {
+            "fieldname": "reason",
+            "fieldtype": "Small Text",
+            "label": "Reason for Access",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_access",
+            "fieldtype": "Section Break",
+            "label": "Access Configuration"
+        },
+        {
+            "fieldname": "access_type",
+            "fieldtype": "Select",
+            "label": "Access Type",
+            "options": "View\nView and Edit",
+            "default": "View",
+            "reqd": 1
+        },
+        {
+            "fieldname": "column_break_3",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "valid_until",
+            "fieldtype": "Date",
+            "label": "Access Valid Until",
+            "description": "Leave blank for permanent access"
+        },
+        {
+            "fieldname": "section_break_approval",
+            "fieldtype": "Section Break",
+            "label": "Approval Details",
+            "depends_on": "eval:doc.status !== 'Pending'"
+        },
+        {
+            "fieldname": "approved_by",
+            "fieldtype": "Link",
+            "label": "Responded By",
+            "options": "User",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_4",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "responded_on",
+            "fieldtype": "Datetime",
+            "label": "Responded On",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_response",
+            "fieldtype": "Section Break",
+            "depends_on": "eval:doc.status !== 'Pending'"
+        },
+        {
+            "fieldname": "response_note",
+            "fieldtype": "Small Text",
+            "label": "Response Note"
+        }
+    ],
+    "index_web_pages_for_search": 0,
+    "links": [],
+    "modified": "2024-01-01 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Confidential App",
+    "name": "Confidential Access Request",
+    "naming_rule": "Expression",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "All"
+        },
+        {
+            "create": 1,
+            "delete": 1,
+            "read": 1,
+            "write": 1,
+            "role": "System Manager"
+        },
+        {
+            "create": 1,
+            "delete": 1,
+            "read": 1,
+            "write": 1,
+            "role": "Confidential Manager"
+        }
+    ],
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+}
