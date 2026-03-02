@@ -293,6 +293,8 @@ def _update_linked_documents(bom_doc, doctype):
 
 			if needs_update:
 				linked.flags.ignore_permissions = True
+				linked.flags.ignore_validate = True
+				linked.flags.ignore_mandatory = True
 				linked.save()
 				debug_log(f"Updated {doctype} {doc_name} based on BOM {bom_doc.name} change")
 		except Exception as e:
