@@ -1,37 +1,157 @@
+"""
+Server-side BOM access restriction for confidential BOMs.
+
+Patches ERPNext functions that return BOM data without going through
+Frappe's standard has_permission hook (i.e. SQL-based reads).
+
+Patched functions:
+  - get_bom_items          (whitelisted, also registered via override_whitelisted_methods)
+  - get_bom_items_as_dict  (internal, used by Work Order / Stock Entry / Production Plan)
+  - make_work_order        (whitelisted, prevents WO creation from inaccessible BOMs)
+"""
+
 import frappe
 from frappe import _
-from erpnext.manufacturing.doctype.bom.bom import get_bom_items as original_get_bom_items
+
 from confidential_app.confidential_app.utils.permissions import (
-	_is_admin,
-	_is_protection_enabled,
-	_user_has_doc_access,
-	debug_log,
+    _is_admin,
+    _is_protection_enabled,
+    _user_has_doc_access,
+    debug_log,
 )
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _assert_bom_access(bom_name, action_label="access"):
+    """Raise PermissionError if the current user may not access *bom_name*.
+
+    Skipped when the confidential system is disabled, no BOM is specified,
+    or the caller is an admin / the BOM is not confidential.
+    """
+    if not _is_protection_enabled() or not bom_name:
+        return
+
+    user = frappe.session.user
+    if _is_admin(user):
+        return
+
+    is_confidential = frappe.db.get_value("BOM", bom_name, "is_confidential")
+    if not is_confidential:
+        return
+
+    if not _user_has_doc_access("BOM", bom_name, user):
+        debug_log(
+            f"BLOCKED: {user} tried to {action_label} "
+            f"confidential BOM {bom_name}"
+        )
+        frappe.throw(
+            _("You don't have permission to {0} confidential BOM {1}.").format(
+                action_label, bom_name
+            ),
+            frappe.PermissionError,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Originals (captured at import time for delegation)
+# ---------------------------------------------------------------------------
+
+from erpnext.manufacturing.doctype.bom.bom import (
+    get_bom_items as _original_get_bom_items,
+    get_bom_items_as_dict as _original_get_bom_items_as_dict,
+)
+from erpnext.manufacturing.doctype.work_order.work_order import (
+    make_work_order as _original_make_work_order,
+)
+
+
+# ---------------------------------------------------------------------------
+# Wrappers
+# ---------------------------------------------------------------------------
+
 @frappe.whitelist()
 def get_bom_items_with_permission_check(bom, company, qty=1, fetch_exploded=1):
-	"""
-	Override of erpnext.manufacturing.doctype.bom.bom.get_bom_items
-	that adds confidential permission checks before returning items.
-	"""
-	if _is_protection_enabled():
-		is_confidential = frappe.db.get_value("BOM", bom, "is_confidential")
-		if is_confidential:
-			user = frappe.session.user
-			if not _is_admin(user) and not _user_has_doc_access("BOM", bom, user):
-				debug_log(f"DENY: {user} tried to get items for confidential BOM {bom}")
-				frappe.throw(
-					_("You don't have permission to access this confidential BOM."),
-					frappe.PermissionError,
-				)
+    """Drop-in replacement for erpnext…bom.get_bom_items with access guard."""
+    _assert_bom_access(bom, "access items of")
+    return _original_get_bom_items(
+        bom=bom, company=company, qty=float(qty), fetch_exploded=int(fetch_exploded)
+    )
 
-	return original_get_bom_items(
-		bom=bom, company=company, qty=float(qty), fetch_exploded=int(fetch_exploded)
-	)
+
+def get_bom_items_as_dict_with_permission_check(
+    bom,
+    company,
+    qty=1,
+    fetch_exploded=1,
+    fetch_scrap_items=0,
+    include_non_stock_items=False,
+    fetch_qty_in_stock_uom=True,
+):
+    """Drop-in replacement for erpnext…bom.get_bom_items_as_dict with access guard.
+
+    This is the core SQL function used by Work Order, Stock Entry, and
+    Production Plan to explode a BOM into raw material rows. Without this
+    patch, any code path that calls get_bom_items_as_dict (including the
+    POW dashboard service layer) would bypass has_permission entirely.
+    """
+    _assert_bom_access(bom, "read materials of")
+    return _original_get_bom_items_as_dict(
+        bom=bom,
+        company=company,
+        qty=qty,
+        fetch_exploded=fetch_exploded,
+        fetch_scrap_items=fetch_scrap_items,
+        include_non_stock_items=include_non_stock_items,
+        fetch_qty_in_stock_uom=fetch_qty_in_stock_uom,
+    )
+
+
+@frappe.whitelist()
+def make_work_order_with_permission_check(
+    bom_no, item, qty=0, project=None, variant_items=None, use_multi_level_bom=None
+):
+    """Drop-in replacement for erpnext…work_order.make_work_order with BOM guard."""
+    _assert_bom_access(bom_no, "create a Work Order from")
+    return _original_make_work_order(
+        bom_no=bom_no,
+        item=item,
+        qty=qty,
+        project=project,
+        variant_items=variant_items,
+        use_multi_level_bom=use_multi_level_bom,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Patch application (called from hooks: before_request, boot_session, after_app_install)
+# ---------------------------------------------------------------------------
+
+_patches_applied = False
 
 
 def apply_patches(app_name=None):
-	"""Legacy patch applicator - kept for backward compatibility but no longer needed.
-	The override is now handled via override_whitelisted_methods in hooks.py."""
-	pass
+    """Monkey-patch ERPNext modules at runtime.
+
+    override_whitelisted_methods in hooks.py handles the two @whitelist
+    endpoints (get_bom_items, make_work_order) for frappe.call routing.
+    This function patches at the module level so that direct Python imports
+    of these functions also go through the permission check.
+
+    Safe to call multiple times (idempotent via _patches_applied flag).
+    """
+    global _patches_applied
+    if _patches_applied:
+        return
+    _patches_applied = True
+
+    import erpnext.manufacturing.doctype.bom.bom as bom_module
+    import erpnext.manufacturing.doctype.work_order.work_order as wo_module
+
+    bom_module.get_bom_items = get_bom_items_with_permission_check
+    bom_module.get_bom_items_as_dict = get_bom_items_as_dict_with_permission_check
+    wo_module.make_work_order = make_work_order_with_permission_check
+
+    debug_log("BOM override patches applied (get_bom_items + get_bom_items_as_dict + make_work_order)")

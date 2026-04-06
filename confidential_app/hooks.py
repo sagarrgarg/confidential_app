@@ -91,9 +91,17 @@ doc_events = {
 # Boot Session
 boot_session = "confidential_app.boot.boot_session"
 
-# Apply patches on app init
+after_app_install = "confidential_app.confidential_app.override.bom_override.apply_patches"
+
+# Apply monkey-patches on first request if boot_session hasn't fired yet
+before_request = ["confidential_app.confidential_app.override.bom_override.apply_patches"]
+
+# Overriding Methods
 override_whitelisted_methods = {
-    "erpnext.manufacturing.doctype.bom.bom.get_bom_items": "confidential_app.confidential_app.override.bom_override.get_bom_items_with_permission_check"
+    "erpnext.manufacturing.doctype.bom.bom.get_bom_items":
+        "confidential_app.confidential_app.override.bom_override.get_bom_items_with_permission_check",
+    "erpnext.manufacturing.doctype.work_order.work_order.make_work_order":
+        "confidential_app.confidential_app.override.bom_override.make_work_order_with_permission_check",
 }
 
 # Clear permission cache on various events
