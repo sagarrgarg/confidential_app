@@ -96,3 +96,50 @@ Full end-to-end audit of the app, covering security, production stability, cross
 3. `business_needed_solutions` calls `get_bom_items_as_dict` — works correctly because our monkey-patch is applied, but depends on import ordering
 
 **Migration:** Run `bench clear-cache && bench migrate && bench build --app confidential_app && bench clear-cache` — the `migrate` step is needed to apply the Work Order custom field fixture changes (permlevel + allow_on_submit).
+
+---
+
+### 2026-04-06 – Harden: force confidential filtering on `frappe.get_all` and `frappe.get_doc`
+
+**Problem:** `frappe.get_all` internally sets `ignore_permissions=True`, bypassing `permission_query_conditions`. Additionally, `frappe.get_doc` from Python does not trigger `has_permission` hooks — those only fire through the web API layer. Any third-party app (or ERPNext internal code) calling these functions could leak confidential BOMs, Stock Entries, and Work Orders.
+
+**What changed:**
+
+1. **`bom_override.py` → `_patched_build_conditions()`** — Monkey-patches `DatabaseQuery.build_conditions` to always inject the confidential SQL WHERE clause for BOM / Stock Entry / Work Order, even when `ignore_permissions=True`. This means `frappe.get_all("BOM")` now behaves identically to `frappe.get_list("BOM")` with respect to confidentiality filtering.
+
+2. **`bom_override.py` → `_check_confidential_doc_access(doc)`** — Centralized access check extracted into a shared helper. Calls the **same** hook function registered in `hooks.py` for each DocType (e.g. `has_stock_entry_submit_permission` for Stock Entry, which includes BOM-cascade logic). This ensures Python-level `get_doc` calls enforce identical rules to the web API layer.
+
+3. **`bom_override.py` → `_patched_get_doc()`** — Wraps `frappe.get_doc` to call `_check_confidential_doc_access` after loading. Includes a re-entry guard (`frappe.flags._conf_get_doc_guard`) to prevent infinite recursion when hooks themselves call `frappe.get_doc`.
+
+4. **`bom_override.py` → `_make_patched_get_cached_doc()`** — Wraps `frappe.get_cached_doc` with the same `_check_confidential_doc_access` call. Necessary because `get_cached_doc` has a cache-hit path that bypasses `get_doc` entirely.
+
+5. **`permissions.py` → `has_stock_entry_submit_permission()`** — Sets the `_conf_get_doc_guard` flag before calling `frappe.get_doc("Stock Entry", ...)` to avoid re-entry in the patched `get_doc`.
+
+6. **`apply_patches()`** — Now applies six patches: the three ERPNext function overrides + `DatabaseQuery.build_conditions` + `frappe.get_doc` + `frappe.get_cached_doc`.
+
+**Updated coverage map:**
+
+| Access path | Protection layer |
+|---|---|
+| `frappe.get_doc("BOM", name)` (web API) | `has_permission` hook |
+| `frappe.get_doc("BOM", name)` (Python) | `_patched_get_doc` → `_check_confidential_doc_access` (NEW) |
+| `frappe.get_list("BOM", ...)` | `permission_query_conditions` |
+| `frappe.get_all("BOM", ...)` | `_patched_build_conditions` (NEW) |
+| `frappe.get_cached_doc("BOM", name)` (cache hit) | `_patched_get_cached_doc` → `_check_confidential_doc_access` (NEW) |
+| `frappe.get_cached_doc("BOM", name)` (cache miss) | delegates to `frappe.get_doc` → caught |
+| `frappe.get_last_doc("BOM")` | `get_all` + `get_doc` → both caught |
+| `frappe.call("get_bom_items", bom=...)` | `override_whitelisted_methods` |
+| `get_bom_items_as_dict(bom, ...)` (internal) | monkey-patch |
+| `frappe.call("make_work_order", bom_no=...)` | `override_whitelisted_methods` |
+| WO/SE validate with confidential BOM | `_assert_linked_bom_access` in doc_events |
+
+**Design decisions:**
+
+- `_check_confidential_doc_access` calls the registered hook function (e.g. `has_stock_entry_submit_permission`) instead of raw `_user_has_doc_access`. This ensures the Stock Entry BOM-cascade logic (grant SE access if user has BOM access) works identically whether the doc is loaded via the web API or Python.
+- The re-entry guard (`frappe.flags._conf_get_doc_guard`) is request-scoped, set via try/finally, and checked early in the skip list to avoid overhead.
+- `frappe.flags.ignore_permissions` is respected as the standard Frappe escape hatch for trusted internal operations.
+- `frappe.new_doc()` is unaffected — new docs have `name=None` which triggers an early skip.
+
+**Impacted modules:** `bom_override.py`, `permissions.py`
+
+**Migration:** None. Run `bench clear-cache` after deploy.

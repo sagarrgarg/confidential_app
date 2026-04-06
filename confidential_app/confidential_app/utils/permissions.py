@@ -291,9 +291,12 @@ def has_stock_entry_submit_permission(doc, user=None, ptype=None, **kwargs):
     try:
         if isinstance(doc, str):
             try:
+                frappe.flags._conf_get_doc_guard = True
                 doc = frappe.get_doc("Stock Entry", doc)
             except frappe.DoesNotExistError:
                 return False
+            finally:
+                frappe.flags._conf_get_doc_guard = False
 
         is_confidential = getattr(doc, "is_confidential", 0)
         if not is_confidential:
