@@ -54,6 +54,25 @@ def _is_enabled():
     return result
 
 
+def _is_app_installed_on_site():
+    """Return True if confidential_app is installed on the current site.
+
+    Critical for multi-tenant safety: apply_patches() in bom_override patches
+    global Python objects (frappe.get_doc, DatabaseQuery.build_conditions,
+    etc.). Those patches live in the worker process and fire for every site
+    that shares the worker — including sites that don't have this app
+    installed. Without this guard, those sites would hit
+    `tabConfidential Role Mapping` queries against tables that don't exist.
+
+    frappe.get_installed_apps() is per-request cached internally, so this is
+    cheap to call on every patched-function entry.
+    """
+    try:
+        return "confidential_app" in frappe.get_installed_apps()
+    except Exception:
+        return False
+
+
 def _is_protection_enabled():
     """Check if confidential protection is globally enabled (cached)."""
     return _is_enabled()
@@ -200,6 +219,9 @@ def has_doctype_permission(doctype, doc, user=None, ptype=None, **_kwargs):
         False – explicitly deny (confidential & user lacks access)
         None  – abstain; Frappe falls through to standard DocPerm rules
     """
+    if not _is_app_installed_on_site():
+        return None
+
     if not _is_enabled():
         return None
 
@@ -280,6 +302,9 @@ def has_stock_entry_submit_permission(doc, user=None, ptype=None, **kwargs):
     Handles manufacturing scenarios where BOM-level access
     should grant access to related Stock Entries.
     """
+    if not _is_app_installed_on_site():
+        return None
+
     if not _is_enabled():
         return None
 
@@ -328,6 +353,12 @@ def has_stock_entry_submit_permission(doc, user=None, ptype=None, **kwargs):
 
 def get_permission_query_conditions(doctype, user):
     """Return a SQL WHERE clause to hide confidential docs the user cannot see."""
+    # Multi-tenant safety: the hook system should already filter by
+    # installed apps, but the SQL we'd emit references tabConfidential*
+    # tables — belt-and-braces so a non-installed site can never hit them.
+    if not _is_app_installed_on_site():
+        return ""
+
     if not _is_enabled():
         return ""
 

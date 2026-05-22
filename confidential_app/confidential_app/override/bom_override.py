@@ -15,6 +15,7 @@ from frappe import _
 
 from confidential_app.confidential_app.utils.permissions import (
     _is_admin,
+    _is_app_installed_on_site,
     _is_protection_enabled,
     _user_has_doc_access,
     debug_log,
@@ -40,6 +41,12 @@ def _assert_bom_access(bom_name, action_label="access"):
     Skipped when the confidential system is disabled, no BOM is specified,
     or the caller is an admin / the BOM is not confidential.
     """
+    # Multi-tenant safety: this wrapper is installed via a process-wide
+    # monkey-patch and will fire on every site sharing the worker. Sites
+    # without confidential_app installed have no Confidential tables, so
+    # bail out before any DB lookup.
+    if not _is_app_installed_on_site():
+        return
     if not _is_protection_enabled() or not bom_name:
         return
 
@@ -151,6 +158,11 @@ def _patched_build_conditions(self):
     """
     _original_build_conditions(self)
 
+    # Multi-tenant safety: the patch is process-wide, but the Confidential
+    # tables only exist on sites where this app is installed.
+    if not _is_app_installed_on_site():
+        return
+
     if (
         self.doctype in MANAGED_DOCTYPES
         and self.flags.ignore_permissions
@@ -188,6 +200,12 @@ def _check_confidential_doc_access(doc):
     - the user is an admin
     - the document is not confidential
     """
+    # Multi-tenant safety: patched into frappe.get_doc/get_cached_doc
+    # process-wide; bail out cleanly on sites without this app installed
+    # (their schemas have no Confidential tables to query).
+    if not _is_app_installed_on_site():
+        return
+
     if (
         not doc
         or getattr(doc, "doctype", None) not in MANAGED_DOCTYPES
